@@ -1,1 +1,9 @@
 
+
+use timing to detect narrow vs long bars.
+
+store these times in an array.
+
+after 9 entries into the array, take the average value in the array.
+
+if value > average, it is wide, if value < average, it is narrow.
