@@ -121,9 +121,40 @@ void follow() {
     }
 }
 
-void readBarcode(uint16_t sensorReadings[5]) {
+/*
+ *Pause all further code, until buttonB has been pressed. Once
+ *pressed, return true
+ *
+ *returns: true upon button press
+ */
+bool waitBPress() {
+    bool pressed = false;
+    do {
+        if (buttonB.getSingleDebouncedRelease()) {
+            pressed = true;
+            delay(10);
+        }
+    }while (pressed == 0);
+    return pressed;
 }
 
+/*
+ *Reads a barcode, then displays the read characters (excluding delimiters) on
+ *the display.
+ *
+ *sensorReadings: integer array storing the robots' sensor readings
+ */
+void readBarcode(uint16_t sensorReadings[5]) {
+    char barcodeReadings[8][9];
+    display.clear();
+    display.gotoXY(8, 4);
+    display.print("Ready");
+    display.gotoXY(7, 5);
+    display.print("Press B");
+    if (waitBPress()) {
+        //rest of the code goes here
+    }
+}
 
 void introScreen() {
     display.gotoXY(3, 0);
