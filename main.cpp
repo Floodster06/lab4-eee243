@@ -89,13 +89,16 @@ void follow() {
 
     //Turn left if too far right
     if (sensorReadings[1] > sensorReadings[3]) {
-        Motors::setSpeeds(25, 70);
+        //used to be 25:70
+        Motors::setSpeeds(25, 35);
         //Turn right if too far left
     } else if (sensorReadings[1] < sensorReadings[3]) {
-        Motors::setSpeeds(70, 25);
+        //used to be 70:25
+        Motors::setSpeeds(35, 25);
         //Go straight if no issues
     } else {
-        Motors::setSpeeds(50, 50);
+        //used to be 50:50
+        Motors::setSpeeds(25, 25);
     }
 
     /*
@@ -108,7 +111,7 @@ void follow() {
     }
     */
 
-    //Stop in place and play a note if lose
+    //Stop in place and play a note if lost
     if (checkLost(sensorReadings)) {
         lost = true;
         Motors::setSpeeds(0, 0);
@@ -134,9 +137,71 @@ bool waitBPress() {
             pressed = true;
             delay(10);
         }
-    }while (pressed == 0);
+    } while (pressed == 0);
     return pressed;
 }
+
+
+//TODO: move all struct stuff to the top of these functions
+typedef struct BarCharacter {
+    int bars[9];
+    struct BarCharacter *next;
+} BarCharacter;
+
+/*
+ *Create new linked list node for barcode characters
+ *
+ *bar[9]:
+ *returns:memory address of the newly created node
+ */
+BarCharacter *newBarCharacter(int bar[9]) {
+    //Allocate memory for the struct
+    BarCharacter *pointer = (BarCharacter *) malloc(sizeof(BarCharacter));
+    if (pointer == nullptr) {
+        exit(1);
+    }
+    //If successfully allocated, assign values to the array and next pointer
+    for (int x = 0; x < 9; x++) {
+        pointer->bars[x] = bar[x];
+    }
+    pointer->next = nullptr;
+    //Return the location of the newly created struct
+    return pointer;
+}
+
+/*
+ *Insert new node at the end of the linked list for barcode characters
+ *
+ ***head:
+ **newBarCharacter:
+ */
+void appendBarCharacter(BarCharacter **head, BarCharacter *newBarCharacter) {
+    if (*head == nullptr) {
+        *head = newBarCharacter;
+    }
+    BarCharacter *current = *head;
+    while (current->next != nullptr) {
+        current = current->next;
+    }
+    newBarCharacter->next = current->next;
+    current->next = newBarCharacter;
+}
+
+
+
+
+/*
+ *
+ *1 == read black, 2 == read white
+ */
+int outerReadBlackOrWhite(uint16_t sensorReadings[5]) {
+    //TODO: make sure that I don't have to change the if condition to >= a value
+    if (sensorReadings[0] == 1000 && sensorReadings[4] == 1000) {
+        return 1;
+    }
+    return 2;
+}
+
 
 /*
  *Reads a barcode, then displays the read characters (excluding delimiters) on
@@ -144,17 +209,79 @@ bool waitBPress() {
  *
  *sensorReadings: integer array storing the robots' sensor readings
  */
+
+//TODO: basically, this is following a guideline using the follow() function and
+//the outer two sensors are reading the barcode. I need to still:
+//account for the narrow white space in between each character
+//get the reader to read properly
+//compare characters to the delimiter character once i can read properly
+//  this is so I can stop the robot when necessary
+//  also reprogram the function so that when losing the guide line, it stops and
+//      doesnt do the "I'm lost" thing in the checkLost() function
+//create functions to translate characters to W and N (wide and narrow)
+
 void readBarcode(uint16_t sensorReadings[5]) {
-    char barcodeReadings[8][9];
+    //initializing required variables
+    //TODO:Changer this back to a float later
+    int barcodeReadings[8][9];
+    bool start = false;
+    bool swap = false;
+    int indexInner = 0;
+    int indexOuter = 0;
+    //initializing display
     display.clear();
     display.gotoXY(8, 4);
     display.print("Ready");
     display.gotoXY(7, 5);
     display.print("Press B");
+    //only run once B is pressed
     if (waitBPress()) {
-        //rest of the code goes here
+        while (!lost) {
+            follow();
+            //reset inner index
+            if (indexInner == 8) {
+                indexInner = 0;
+                indexOuter++;
+            }
+
+            //Start reading barcode and reset encoders
+            if (!start && (outerReadBlackOrWhite(sensorReadings) == 1)) {
+                start = true;
+                Encoders::getCountsAndResetLeft();
+                Encoders::getCountsAndResetRight();
+            }
+
+            //on color swap, store length
+            if (swap && start) {
+                barcodeReadings[indexOuter][indexInner] =
+                ( Encoders::getCountsAndResetLeft() +
+                  Encoders::getCountsAndResetRight()) / 2;
+                swap = false;
+                indexInner++;
+            }
+
+            //detect color swap
+            if (((indexInner % 2 == 0 && outerReadBlackOrWhite(sensorReadings) ==
+                1)
+                || (indexInner % 2 == 1 && outerReadBlackOrWhite(sensorReadings)
+                == 2))&&start) {
+                swap = true;
+            }
+
+
+        }
+        display.clear();
+        display.gotoXY(0, 0);
+        for (int x = 0; x < 8; x++) {
+            for (int y = 0; y < 9; y++) {
+                display.gotoXY(x,y);
+                display.print(barcodeReadings[x][y]);
+            }
+        }
+        delay(10000);
     }
 }
+
 
 void introScreen() {
     display.gotoXY(3, 0);
