@@ -10,10 +10,7 @@ ButtonB buttonB;
 LineSensors lineSensors;
 Motors motors;
 Encoders encoders;
-
-// ⚠️ CHOOSE THE RIGHT ONE FOR YOUR ROBOT:
-OLED display;   // for OLED version
-// LCD display; // for LCD version
+OLED display;
 
 // ---------- Lab constants ----------
 const uint8_t  MAX_CODES        = 8;  // total characters incl. delimiters
