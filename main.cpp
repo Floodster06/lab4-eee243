@@ -45,25 +45,33 @@ ErrorType readBarcode(char decoded[MAX_DATA_CHARS + 1]);
 //  UI helpers
 // =========================================================
 
-void introScreen()
-{
-  display.clear();
-  display.gotoXY(0, 0);
-  display.print(F("EEE243 Lab 4"));
-  display.gotoXY(0, 1);
-  display.print(F("Barcode Reader"));
-  display.gotoXY(0, 3);
-  display.print(F("Press B..."));
+void introScreen() {
+    display.gotoXY(3, 0);
+    display.print("Michael Flood");
+    display.gotoXY(5, 1);
+    display.print("Jeong Lee");
+    display.gotoXY(8, 4);
+    display.print("Lab 4");
+    display.gotoXY(0, 5);
+    display.print("When Barcodes Attack!");
+    display.gotoXY(1, 7);
+    display.print("To start, press B");
+
+    if (buttonB.isPressed()) {
+        start = true;
+        lost = false;
+        calibration();
+    }
 }
 
 void readyScreen()
 {
   display.clear();
-  display.gotoXY(0, 0);
+  display.gotoXY(7, 0);
   display.print(F("Ready"));
-  display.gotoXY(0, 1);
+  display.gotoXY(3, 2);
   display.print(F("Place on line"));
-  display.gotoXY(0, 2);
+  display.gotoXY(3, 7);
   display.print(F("Press B to go"));
 }
 
