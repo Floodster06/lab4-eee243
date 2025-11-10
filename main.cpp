@@ -56,12 +56,6 @@ void introScreen() {
     display.print("When Barcodes Attack!");
     display.gotoXY(1, 7);
     display.print("To start, press B");
-
-    if (buttonB.isPressed()) {
-        start = true;
-        lost = false;
-        calibration();
-    }
 }
 
 void readyScreen()
