@@ -4,7 +4,7 @@
 
 using namespace Pololu3piPlus32U4;
 
-// ---------- Hardware objects ----------
+// ---------- Required stuff ----------
 Buzzer buzzer;
 ButtonB buttonB;
 LineSensors lineSensors;
@@ -12,7 +12,7 @@ Motors motors;
 Encoders encoders;
 OLED display;
 
-// ---------- Lab constants ----------
+// ---------- Constants ----------
 const uint8_t  MAX_CODES        = 8;  // total characters incl. delimiters
 const uint8_t  MAX_DATA_CHARS   = 6;  // chars between * and *
 const uint16_t OUTER_BLACK_TH   = 600; // tune: outer sensor "black" threshold
@@ -29,7 +29,7 @@ enum ErrorType
   ERR_OFF_END
 };
 
-// ---------- Function prototypes ----------
+// ---------- Function declarations ----------
 void introScreen();
 void readyScreen();
 void waitForButtonB();
