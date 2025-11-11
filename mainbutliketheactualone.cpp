@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Pololu3piPlus32U4Buttons.h>
 #include <Pololu3piPlus32U4.h>
+#include "code39.h"
 
 using namespace Pololu3piPlus32U4;
 ButtonB buttonB;
@@ -10,6 +11,7 @@ bool start = false;
 bool lost = false;
 
 enum  Errors{
+    ALL_GOOD,
     BAD_CODE,
     TOO_LONG,
     OFF_END
@@ -104,27 +106,6 @@ void follow(uint16_t sensorReadings[5]) {
         Motors::setSpeeds(25, 25);
     }
 
-    /*
-    //Turn around and play a note if hit a T-intersection
-    if (checkT(sensorReadings)) {
-        Buzzer::playNote(NOTE_A(4), 1000, 10);
-        Motors::setSpeeds(-100, 100);
-        delay(370);
-        Motors::setSpeeds(0, 0);
-    }
-    */
-
-    //Stop in place and play a note if lost
-    if (checkLost(sensorReadings)) {
-        lost = true;
-        Motors::setSpeeds(0, 0);
-        display.clear();
-        display.gotoXY(7, 3);
-        display.print("I'm Lost!");
-        Buzzer::playNote(NOTE_F(4), 1000, 10);
-        delay(5000);
-        display.clear();
-    }
 }
 
 /*
@@ -144,6 +125,28 @@ bool waitBPress() {
     return pressed;
 }
 
+
+// convert N/W pattern (length 9) to Code39 char using code39.h
+char patternToChar(const char pattern[9])
+{
+    for (int row = 0; row < 44; row++)
+    {
+        bool match = true;
+        for (int i = 0; i < 9; i++)
+        {
+            if (code39[row][i + 1] != pattern[i])
+            {
+                match = false;
+                break;
+            }
+        }
+        if (match)
+        {
+            return code39[row][0];
+        }
+    }
+    return 0; // no match
+}
 
 //TODO: move all struct stuff to the top of these functions
 typedef struct BarCharacter {
@@ -219,72 +222,151 @@ bool outerReadBlackOrWhite(const uint16_t sensorReadings[5]) {
 //      doesnt do the "I'm lost" thing in the checkLost() function
 //create functions to translate characters to W and N (wide and narrow)
 
-void readBarcode(uint16_t sensorReadings[5]) {
+Errors readBarcode(uint16_t sensorReadings[5]) {
     //initializing required variables
-    //TODO:Changer this back to a float later
-    int barcodeReadings[8][9];
+    //barcodeTranslated holds the translated barcode, start checks if the
+    //starting delimiter has been gotten, chars read stores how many characters
+    //have been read so far
+    char barcodeTranslated[9];
     bool start = false;
     bool swap = false;
-    int indexInner = 0;
-    int indexOuter = 0;
+    int charsRead =0;
     //initializing display
     display.clear();
     display.gotoXY(8, 4);
     display.print("Ready");
     display.gotoXY(7, 5);
     display.print("Press B");
-
+    
 
     //only run once B is pressed
     if (waitBPress()) {
-        while (true) {
-
+        
+        //Move until the start of the barcode
+        while(true){
+            //Move forward
+            lineSensors.readCalibrated(sensorReadings);
             follow(sensorReadings);
-            //reset inner index
-            //Pretty much once you get to the end of the character, go to the
-            //next one
-            if (indexInner == 8) {
-                indexInner = 0;
-                indexOuter++;
-                Buzzer::playNote(NOTE_F(6), 100, 10);
-            }
-
-            //Start reading barcode and reset encoders
-            if (!start && (outerReadBlackOrWhite(sensorReadings) == 1)) {
-                start = true;
+            //If encountered the start of the barcode
+            if (outerReadBlackOrWhite(sensorReadings)){
+                //Reset Encoders
                 Encoders::getCountsAndResetLeft();
                 Encoders::getCountsAndResetRight();
+                //Play low note (start of new character)
+                Buzzer::playNote(NOTE_F(3),100,10);
+                //Move to the loop reading the barcode
+                break;
             }
+        }
 
-            //On color swap (from black <-> white), store length
-            if (swap && start) {
-                barcodeReadings[indexOuter][indexInner] =
-                ( Encoders::getCountsAndResetLeft() +
-                  Encoders::getCountsAndResetRight()) / 2;
-                swap = false;
-                indexInner++;
-            }
-
-            //detect color swap
+        //Reading the barcode | Each iteration is one character being read
+        while (true){
+            //Temp array to read 1 character
+            int barcodeReading[9];
+            //Move forward
+            //TODO: these two lines may be redundant, since they're in the other
+            //while loop
             lineSensors.readCalibrated(sensorReadings);
-            if (((indexInner % 2 == 0 && outerReadBlackOrWhite(sensorReadings) ==
-                1)
-                || (indexInner % 2 == 1 && outerReadBlackOrWhite(sensorReadings)
-                == 2))&&start) {
-                swap = true;
+            follow(sensorReadings);
+            //Store current color of bar we are reading (to compare against later)
+            bool pastColor = outerReadBlackOrWhite(sensorReadings);
+            //For loop reads one character
+            for(int x=0;x<9;x++){
+                //While loop reads one bar of a character
+                while (true) {
+                    //Move forward
+                    lineSensors.readCalibrated(sensorReadings);
+                    follow(sensorReadings);
+                    bool currentColor = outerReadBlackOrWhite(sensorReadings);
+                    //If a new color is detected, we know that the bar has ended
+                    if (currentColor != pastColor) {
+                        //Save length of the bar
+                        barcodeReading[x] = abs(Encoders::getCountsAndResetLeft());
+                    }
+                    //Update the color of the bar we are reading
+                    pastColor = currentColor;
+                    break;
+                }
             }
 
+            //Translate character to Wide and Narrows
 
-        }
-        display.clear();
-        display.gotoXY(0, 0);
-        for (int x = 0; x < 8; x++) {
-            for (int y = 0; y < 9; y++) {
-                display.gotoXY(x,y);
-                display.print(barcodeReadings[x][y]);
+            //Find biggest and smallest numbers, average to get a midpoint for
+            //translation
+            int widest=barcodeReading[0], thinnest = barcodeReading[0];
+            for (int x = 0; x < 9; x++) {
+                if (barcodeReading[x] > widest) {
+                    widest = barcodeReading[x];
+                }
+                if (barcodeReading[x] < thinnest) {
+                    thinnest = barcodeReading[x];
+                }
+            }
+
+            //Translate to W/N based off midpoint
+            int midPoint = (widest+thinnest)/2;
+            char translatedWN[9];
+            for (int x = 0; x < 9; x++) {
+                if (barcodeReading[x] > midPoint) {
+                    translatedWN[x] = 'W';
+                }
+                if (barcodeReading[x] < midPoint) {
+                    translatedWN[x] = 'N';
+                }
+            }
+
+            //Error 1: Bad Code (More/less than 3 wide elements)
+            int wideCounter =0;
+            for (int x = 0; x < 9; x++) {
+                if (translatedWN[x] == 'W') {
+                    wideCounter++;
+                }
+            }
+            if (wideCounter!=3) {
+                return BAD_CODE;
+            }
+
+            //Translate to an actual character
+            char translatedChar = patternToChar(translatedWN);
+            //Error 2: Read more than 8 characters and hasn't found a delimiter
+            charsRead++;
+            if (charsRead > 8) {
+                return TOO_LONG;
+            }
+            //No match case for the character in code39
+            if (translatedChar==0) {
+                Motors::setSpeeds(0, 0);
+                return BAD_CODE;
+            }
+
+            //Handle delimiters
+            if (translatedChar == '*') {
+                //1st delimiter
+                if (!start) {
+                    start=true;
+
+                }
+                //2nd delimiter
+                Motors::setSpeeds(0, 0);
+                return ALL_GOOD;
+            }
+            //Put translated character into the right array
+            barcodeTranslated[charsRead]=translatedChar;
+
+            //Move to next character start or off the line
+            while (true) {
+                lineSensors.readCalibrated(sensorReadings);
+                follow(sensorReadings);
+                //Error 3: End of center line detected
+                if (checkLost(sensorReadings)) {
+                    Motors::setSpeeds(0, 0);
+                    return OFF_END;
+                }
+                if (outerReadBlackOrWhite(sensorReadings)) {
+                    break;
+                }
             }
         }
-        delay(10000);
     }
 }
 
